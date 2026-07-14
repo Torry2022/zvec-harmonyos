@@ -1,0 +1,9 @@
+.work/
+build/
+out/
+.idea/
+.vscode/
+*.so
+*.a
+*.log
+*.zip

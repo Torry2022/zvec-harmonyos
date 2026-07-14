@@ -1,0 +1,8 @@
+zvec-harmonyos
+Copyright 2026 Ji Zhenghao
+
+This project contains independent HarmonyOS build scripts, patches, and
+validation material for Alibaba Zvec. Zvec itself is maintained by Alibaba
+and distributed under the Apache License 2.0.
+
+Upstream project: https://github.com/alibaba/zvec

@@ -1,0 +1,263 @@
+diff --git a/cmake/bazel.cmake b/cmake/bazel.cmake
+index 262f721..21110c5 100644
+--- a/cmake/bazel.cmake
++++ b/cmake/bazel.cmake
+@@ -370,7 +370,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+ 
+-if(APPLE OR ANDROID)
++if(APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "OHOS")
+     option(CLANG_USE_LIBCXX "Use libc++ instead of libstdc++" ON)
+ else()
+     option(CLANG_USE_LIBCXX "Use libc++ instead of libstdc++" OFF)
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index a3787dc..766d4c6 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -100,6 +100,10 @@ else()
+             ${CMAKE_DL_LIBS}
+     )
+ 
++    # HarmonyOS uses libc++_shared from the official SDK toolchain.
++    if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
++        message(STATUS "zvec_shared: Using HarmonyOS libc++_shared")
++    else()
+     # Try static linking of libstdc++ and libgcc for better portability
+     set(ALLIN_STATIC_LIBS_FOUND FALSE)
+     execute_process(
+@@ -123,6 +127,7 @@ else()
+     else()
+         message(STATUS "zvec_shared: Using dynamic linking for libstdc++ and libgcc")
+     endif()
++    endif()
+ endif()
+ 
+ # Include directories
+diff --git a/src/ailego/parallel/thread_pool.cc b/src/ailego/parallel/thread_pool.cc
+index 54a8970..9adfeee 100644
+--- a/src/ailego/parallel/thread_pool.cc
++++ b/src/ailego/parallel/thread_pool.cc
+@@ -14,7 +14,8 @@
+ 
+ #include <zvec/ailego/parallel/thread_pool.h>
+ 
+-#if (defined(__linux) || defined(__linux__)) && !defined(__ANDROID__)
++#if (defined(__linux) || defined(__linux__)) && !defined(__ANDROID__) && \
++    !defined(__OHOS__)
+ #include <pthread.h>
+ 
+ static inline void BindThreads(std::vector<std::thread> &pool) {
+diff --git a/src/binding/c/CMakeLists.txt b/src/binding/c/CMakeLists.txt
+index 6533028..23d7957 100644
+--- a/src/binding/c/CMakeLists.txt
++++ b/src/binding/c/CMakeLists.txt
+@@ -159,6 +159,10 @@ else()
+             ${CMAKE_DL_LIBS}
+     )
+     
++    # HarmonyOS uses libc++_shared from the official SDK toolchain.
++    if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
++        message(STATUS "zvec_c_api: Using HarmonyOS libc++_shared")
++    else()
+     # Link C++ standard library appropriately for the platform
+     # On Linux, we need to explicitly link libstdc++
+     # Try static linking first, fall back to dynamic
+@@ -198,6 +202,7 @@ else()
+         # Note: We still need to link the libraries, just not statically
+         message(STATUS "Static libraries not found, using dynamic linking for libstdc++ and libgcc")
+     endif()
++    endif()
+ endif()
+ 
+ # Include directories
+diff --git a/thirdparty/antlr/antlr4.patch b/thirdparty/antlr/antlr4.patch
+index 81dbe1c..e165d9e 100644
+--- a/thirdparty/antlr/antlr4.patch
++++ b/thirdparty/antlr/antlr4.patch
+@@ -33,6 +33,15 @@ index 390078151..213258ac8 100644
+  if(APPLE)
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation)
+  endif()
++@@ -111,6 +111,8 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND ANDROID)
++ 	# and without -stdlib=libc++ cxxflags
++ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND APPLE)
++     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -stdlib=libc++")
+++elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND CMAKE_SYSTEM_NAME MATCHES "OHOS")
+++    # HarmonyOS uses Clang and libc++ through the official OHOS toolchain.
++ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND ( CMAKE_SYSTEM_NAME MATCHES "Linux" OR CMAKE_SYSTEM_NAME MATCHES "FreeBSD") )
++     execute_process(
++         COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE CLANG_VERSION)
+ diff --git a/runtime/Cpp/runtime/CMakeLists.txt b/runtime/Cpp/runtime/CMakeLists.txt
+ index 2c5e7376f..ae992f9cc 100644
+ --- a/runtime/Cpp/runtime/CMakeLists.txt
+diff --git a/thirdparty/arrow/CMakeLists.txt b/thirdparty/arrow/CMakeLists.txt
+index e9860e1..fa2904a 100644
+--- a/thirdparty/arrow/CMakeLists.txt
++++ b/thirdparty/arrow/CMakeLists.txt
+@@ -91,6 +91,47 @@ elseif(IOS)
+                 LOG_BUILD ON
+                 LOG_INSTALL ON
+         )
++elseif(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
++        file(TO_CMAKE_PATH "${CMAKE_TOOLCHAIN_FILE}" OHOS_TOOLCHAIN_FILE)
++        file(TO_CMAKE_PATH "${CMAKE_MAKE_PROGRAM}" OHOS_NINJA_PROGRAM)
++        ExternalProject_Add(
++                ARROW.BUILD PREFIX arrow
++                SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apache-arrow-21.0.0
++                DOWNLOAD_COMMAND ""
++                BUILD_IN_SOURCE false
++                CONFIGURE_COMMAND "${CMAKE_COMMAND}" -E env ${CONFIGURE_ENV_LIST}
++                        "${CMAKE_COMMAND}" -G ${CMAKE_GENERATOR} ${CMAKE_CACHE_ARGS}
++                        -DCMAKE_MAKE_PROGRAM=${OHOS_NINJA_PROGRAM}
++                        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
++                        -DCMAKE_DEBUG_POSTFIX=
++                        -DCMAKE_TOOLCHAIN_FILE=${OHOS_TOOLCHAIN_FILE}
++                        -DOHOS_ARCH=${OHOS_ARCH}
++                        -DOHOS_STL=${OHOS_STL}
++                        -DOHOS_PLATFORM_LEVEL=${OHOS_PLATFORM_LEVEL}
++                        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
++                        -DARROW_BUILD_SHARED=OFF
++                        -DARROW_ACERO=ON
++                        -DARROW_FILESYSTEM=ON
++                        -DARROW_DATASET=ON
++                        -DARROW_PARQUET=ON
++                        -DARROW_COMPUTE=ON
++                        -DARROW_WITH_ZLIB=OFF
++                        -DARROW_DEPENDENCY_SOURCE=BUNDLED
++                        -DARROW_MIMALLOC=OFF
++                        -DARROW_JEMALLOC=OFF
++                        -DARROW_SIMD_LEVEL=NONE
++                        -DARROW_RUNTIME_SIMD_LEVEL=NONE
++                        -DARROW_WITH_MUSL=ON
++                        -DCMAKE_INSTALL_LIBDIR=lib
++                        "<SOURCE_DIR>/cpp"
++                BUILD_COMMAND "${CMAKE_COMMAND}" --build . --target all -- -j ${NPROC}
++                INSTALL_COMMAND "${CMAKE_COMMAND}" --install "<BINARY_DIR>" --prefix=${EXTERNAL_BINARY_DIR}/usr/local
++                BYPRODUCTS ${LIB_PARQUET} ${LIB_ARROW} ${LIB_COMPUTE} ${LIB_ACERO} ${LIB_ARROW_DEPENDS} ${LIB_ARROW_DATASET}
++                LOG_DOWNLOAD ON
++                LOG_CONFIGURE ON
++                LOG_BUILD ON
++                LOG_INSTALL ON
++        )
+ elseif (MSVC)
+     if(ZVEC_USE_STATIC_CRT)
+         set(_ARROW_CRT_FLAG "/MT")
+diff --git a/thirdparty/arrow/arrow.patch b/thirdparty/arrow/arrow.patch
+index 6a0bdf7..bb2f1bd 100644
+--- a/thirdparty/arrow/arrow.patch
++++ b/thirdparty/arrow/arrow.patch
+@@ -24,3 +24,20 @@ index 0f5840676..cf68bfdcb 100644
+  
+    static Result<ExecNode*> Make(ExecPlan* plan, std::vector<ExecNode*> inputs,
+                                  const ExecNodeOptions& options) {
++
++diff --git a/cpp/cmake_modules/ThirdpartyToolchain.cmake b/cpp/cmake_modules/ThirdpartyToolchain.cmake
++index 7fa4b66..a0662cb 100644
++--- a/cpp/cmake_modules/ThirdpartyToolchain.cmake
+++++ b/cpp/cmake_modules/ThirdpartyToolchain.cmake
++@@ -950,6 +950,11 @@ set(EP_COMMON_CMAKE_ARGS
++     # https://github.com/apache/arrow/issues/45985
++     -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
++ 
+++if(CMAKE_MAKE_PROGRAM)
+++  file(TO_CMAKE_PATH "${CMAKE_MAKE_PROGRAM}" EP_CMAKE_MAKE_PROGRAM)
+++  list(APPEND EP_COMMON_CMAKE_ARGS -DCMAKE_MAKE_PROGRAM=${EP_CMAKE_MAKE_PROGRAM})
+++endif()
+++
++ # if building with a toolchain file, pass that through
++ if(CMAKE_TOOLCHAIN_FILE)
++   list(APPEND EP_COMMON_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+diff --git a/thirdparty/lz4/CMakeLists.txt b/thirdparty/lz4/CMakeLists.txt
+index 5e73245..6e032cf 100644
+--- a/thirdparty/lz4/CMakeLists.txt
++++ b/thirdparty/lz4/CMakeLists.txt
+@@ -87,7 +87,38 @@ else()
+   list(APPEND _lz4_env "CFLAGS=-fPIC")
+ endif()
+ 
+-if(MSVC)
++if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
++    file(TO_CMAKE_PATH "${CMAKE_TOOLCHAIN_FILE}" OHOS_TOOLCHAIN_FILE)
++    file(TO_CMAKE_PATH "${CMAKE_MAKE_PROGRAM}" OHOS_NINJA_PROGRAM)
++    ExternalProject_Add(
++            Lz4.BUILD
++            PREFIX lz4
++            SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lz4-1.9.4"
++            SOURCE_SUBDIR build/cmake
++            CMAKE_ARGS
++            -DCMAKE_TOOLCHAIN_FILE=${OHOS_TOOLCHAIN_FILE}
++            -DCMAKE_MAKE_PROGRAM=${OHOS_NINJA_PROGRAM}
++            -DOHOS_ARCH=${OHOS_ARCH}
++            -DOHOS_STL=${OHOS_STL}
++            -DOHOS_PLATFORM_LEVEL=${OHOS_PLATFORM_LEVEL}
++            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
++            -DCMAKE_INSTALL_PREFIX=${EXTERNAL_BINARY_DIR}/usr/local
++            -DCMAKE_INSTALL_LIBDIR=lib
++            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
++            -DBUILD_SHARED_LIBS=OFF
++            -DBUILD_STATIC_LIBS=ON
++            -DLZ4_BUILD_CLI=OFF
++            -DLZ4_BUILD_LEGACY_LZ4C=OFF
++            BUILD_COMMAND "${CMAKE_COMMAND}" --build . --parallel 6
++            INSTALL_COMMAND "${CMAKE_COMMAND}" --install .
++            BUILD_IN_SOURCE OFF
++            LOG_DOWNLOAD ON
++            LOG_CONFIGURE ON
++            LOG_BUILD ON
++            LOG_INSTALL ON
++            BUILD_BYPRODUCTS ${lz4_LIBRARY_DIR}/liblz4.a
++    )
++elseif(MSVC)
+     ExternalProject_Add(
+             Lz4.BUILD
+             PREFIX lz4
+diff --git a/thirdparty/rocksdb/CMakeLists.txt b/thirdparty/rocksdb/CMakeLists.txt
+index 5f1bc3c..d4da8b1 100644
+--- a/thirdparty/rocksdb/CMakeLists.txt
++++ b/thirdparty/rocksdb/CMakeLists.txt
+@@ -18,6 +18,12 @@ elseif(IOS)
+     if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+         set(HAS_ARMV8_CRC ON CACHE INTERNAL "Force ARM CRC for iOS arm64")
+     endif()
++elseif(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
++    set(ROCKSDB_OHOS_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb.ohos.patch)
++    file(READ "${ROCKSDB_SRC_DIR}/env/fs_posix.cc" ROCKSDB_FS_POSIX_SOURCE)
++    if(NOT ROCKSDB_FS_POSIX_SOURCE MATCHES "__OHOS__")
++        apply_patch_once("rocksdb_ohos_fix" "${ROCKSDB_SRC_DIR}" "${ROCKSDB_OHOS_PATCH}")
++    endif()
+ endif()
+ 
+ set(ROCKSDB_BUILD_SHARED OFF CACHE BOOL "Disable install in rocksdb" FORCE)
+diff --git a/thirdparty/rocksdb/rocksdb.ohos.patch b/thirdparty/rocksdb/rocksdb.ohos.patch
+new file mode 100644
+index 0000000..30d3a7a
+--- /dev/null
++++ b/thirdparty/rocksdb/rocksdb.ohos.patch
+@@ -0,0 +1,26 @@
++diff --git a/env/fs_posix.cc b/env/fs_posix.cc
++index c2e8cfa..076cb4f 100644
++--- a/env/fs_posix.cc
+++++ b/env/fs_posix.cc
++@@ -23,7 +23,7 @@
++ #include <sys/ioctl.h>
++ #include <sys/mman.h>
++ #include <sys/stat.h>
++-#if defined(OS_LINUX) || defined(OS_SOLARIS) || defined(OS_ANDROID)
+++#if defined(OS_LINUX) || defined(OS_SOLARIS) || defined(OS_ANDROID) || defined(__OHOS__)
++ #include <sys/statfs.h>
++ #include <sys/sysmacros.h>
++ #endif
++diff --git a/env/io_posix.cc b/env/io_posix.cc
++index 0ec0e9c..c346617 100644
++--- a/env/io_posix.cc
+++++ b/env/io_posix.cc
++@@ -27,7 +27,7 @@
++ #include <sys/mman.h>
++ #include <sys/stat.h>
++ #include <sys/types.h>
++-#ifdef OS_LINUX
+++#if defined(OS_LINUX) || defined(__OHOS__)
++ #include <sys/statfs.h>
++ #include <sys/sysmacros.h>
++ #endif
