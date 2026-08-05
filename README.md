@@ -1,12 +1,12 @@
 # zvec-harmonyos
 
-Zvec `v0.4.0` 的非官方 HarmonyOS 交叉编译方案，提供固定上游版本的补丁、Windows PowerShell 构建脚本和最小 C API 生命周期 smoke 测试。
+Zvec `v0.6.0` 的非官方 HarmonyOS 交叉编译方案，提供固定上游版本的补丁、Windows PowerShell 构建脚本和最小 C API 生命周期 smoke 测试。
 
 > 本仓库不是 Alibaba Zvec 或 HarmonyOS 的官方项目。当前结果来自真实设备验证，但仍应视为实验性移植。
 
 ## 获取预编译库
 
-不需要修改 Zvec 或验证交叉编译过程时，可从 [GitHub Releases](https://github.com/Torry2022/zvec-harmonyos/releases) 下载 `zvec-0.4.0-harmonyos-arm64-v8a.zip`。压缩包包含：
+不需要修改 Zvec 或验证交叉编译过程时，可从 [GitHub Releases](https://github.com/Torry2022/zvec-harmonyos/releases) 下载 `zvec-0.6.0-harmonyos-arm64-v8a.zip`。压缩包包含：
 
 - HarmonyOS `arm64-v8a` 的 `libzvec_c_api.so`。
 - 对应版本的 `zvec/c_api.h`。
@@ -16,7 +16,7 @@ Zvec `v0.4.0` 的非官方 HarmonyOS 交叉编译方案，提供固定上游版�
 下载后使用同一 Release 中的 `SHA256SUMS` 校验文件：
 
 ```powershell
-Get-FileHash .\zvec-0.4.0-harmonyos-arm64-v8a.zip -Algorithm SHA256
+Get-FileHash .\zvec-0.6.0-harmonyos-arm64-v8a.zip -Algorithm SHA256
 ```
 
 预编译库仍需按[集成到 HarmonyOS Native 模块](#集成到-harmonyos-native-模块)一节放入应用并配置 CMake。需要审计补丁、升级依赖或自行控制工具链时，请继续使用下方的源码构建流程。
@@ -25,7 +25,7 @@ Get-FileHash .\zvec-0.4.0-harmonyos-arm64-v8a.zip -Algorithm SHA256
 
 | 项目 | 已验证配置 |
 | --- | --- |
-| Zvec | `v0.4.0` / `cfe9eed2f8c010d0d68add1a69cffb91fa0fbbb6` |
+| Zvec | `v0.6.0` / `ec8a78ee08b14a0b8c94158ffc1de42cd3f97f6d` |
 | 目标平台 | HarmonyOS `arm64-v8a`，API 9，`c++_shared` |
 | 主机 | Windows PowerShell |
 | 工具链 | DevEco Studio OpenHarmony SDK CMake toolchain |
@@ -38,12 +38,14 @@ Get-FileHash .\zvec-0.4.0-harmonyos-arm64-v8a.zip -Algorithm SHA256
 2. 将 OHOS toolchain、Ninja 和平台参数传递给 Arrow 与 LZ4 外部构建。
 3. 禁用 HarmonyOS 不支持的 Linux 线程亲和性代码。
 4. 补充 RocksDB 的 OHOS POSIX 头文件处理及 ANTLR 的 OHOS Clang 分支。
+5. 使用 Windows 宿主编译器生成 Snowball 词干处理代码，再由 HarmonyOS 工具链编译目标代码。
 
 ## 前置条件
 
-- Git，且支持递归拉取 submodule。
+- Git for Windows，且支持递归拉取 submodule；其 `usr/bin` 中的 Perl 和 sed 用于 Snowball 代码生成。
 - DevEco Studio 及其 OpenHarmony Native SDK。
 - Windows x64 版 `protoc.exe` 21.12，下载自 [Protocol Buffers v21.12](https://github.com/protocolbuffers/protobuf/releases/tag/v21.12) 的 `protoc-21.12-win64.zip`。
+- GNU Make 4.x 和 Windows 宿主 C 编译器（GCC 或 Clang），用于 Zvec 0.6.0 新增的 Snowball 代码生成步骤。
 - 足够的磁盘空间；完整构建会生成超过 1 GB 的中间文件。
 
 ### `protoc` 的作用与版本校验
@@ -73,30 +75,32 @@ libprotoc 3.21.12
 git clone https://github.com/Torry2022/zvec-harmonyos.git
 cd zvec-harmonyos
 
-git clone --recurse-submodules --branch v0.4.0 https://github.com/alibaba/zvec.git .work/zvec-0.4.0
-git -C .work/zvec-0.4.0 rev-parse HEAD
+git clone --recurse-submodules --branch v0.6.0 https://github.com/alibaba/zvec.git .work/zvec-0.6.0
+git -C .work/zvec-0.6.0 rev-parse HEAD
 
 $env:DEVECO_SDK_HOME = 'D:\path\to\DevEco Studio\sdk\default\openharmony'
 
 .\build_zvec_ohos.ps1 `
-  -SourceDir .work\zvec-0.4.0 `
-  -BuildDir build\zvec-0.4.0 `
-  -ProtocPath D:\path\to\protoc-21.12-win64\bin\protoc.exe
+  -SourceDir .work\zvec-0.6.0 `
+  -BuildDir build\zvec-0.6.0 `
+  -ProtocPath D:\path\to\protoc-21.12-win64\bin\protoc.exe `
+  -HostMake D:\path\to\make.exe `
+  -HostCCompiler D:\path\to\gcc.exe
 ```
 
 `rev-parse` 必须输出：
 
 ```text
-cfe9eed2f8c010d0d68add1a69cffb91fa0fbbb6
+ec8a78ee08b14a0b8c94158ffc1de42cd3f97f6d
 ```
 
 构建产物位于：
 
 ```text
-build/zvec-0.4.0/lib/libzvec_c_api.so
+build/zvec-0.6.0/lib/libzvec_c_api.so
 ```
 
-也可以通过 `-OpenHarmonySdk` 显式传入 SDK 目录。脚本会校验上游 commit、重复应用补丁的状态、最终产物和 SHA-256。
+也可以通过 `-OpenHarmonySdk` 显式传入 SDK 目录。`make`、`gmake`、`cc`、`gcc` 或 `clang` 已在 `PATH` 中时，可省略对应的宿主工具参数。脚本会校验上游 commit、重复应用补丁的状态、最终产物和 SHA-256。
 
 ## 集成到 HarmonyOS Native 模块
 
@@ -122,8 +126,8 @@ entry/src/main/
 New-Item -ItemType Directory -Force entry\src\main\libs\arm64-v8a | Out-Null
 New-Item -ItemType Directory -Force entry\src\main\third_party\zvec\include\zvec | Out-Null
 
-Copy-Item build\zvec-0.4.0\lib\libzvec_c_api.so entry\src\main\libs\arm64-v8a\
-Copy-Item .work\zvec-0.4.0\src\include\zvec\c_api.h entry\src\main\third_party\zvec\include\zvec\
+Copy-Item build\zvec-0.6.0\lib\libzvec_c_api.so entry\src\main\libs\arm64-v8a\
+Copy-Item .work\zvec-0.6.0\src\include\zvec\c_api.h entry\src\main\third_party\zvec\include\zvec\
 ```
 
 然后在应用的 Native CMake 中导入：
@@ -168,7 +172,7 @@ PASS zvec lifecycle and retrieval smoke test
 
 ## 已知限制
 
-- 目前只固定验证 Zvec `v0.4.0`，不保证补丁可直接用于其他版本。
+- 目前只固定验证 Zvec `v0.6.0`，不保证补丁可直接用于其他版本。
 - 当前脚本面向 Windows PowerShell 与 DevEco Studio OpenHarmony SDK。
 - 仓库不包含 Zvec 上游源码、模型权重、构建目录或预编译 `.so`。
 
