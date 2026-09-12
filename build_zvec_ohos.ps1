@@ -5,13 +5,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$BuildDir,
 
-    [Parameter(Mandatory = $true)]
-    [string]$ProtocPath,
-
     [string]$OpenHarmonySdk = $env:DEVECO_SDK_HOME,
-    [string]$HostMake,
     [string]$HostCCompiler,
-    [string]$ExpectedCommit = "ec8a78ee08b14a0b8c94158ffc1de42cd3f97f6d"
+    [string]$ExpectedCommit = "8321c1314a559fd5f909e92498f43e5194bf9b99"
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,49 +17,23 @@ if ([string]::IsNullOrWhiteSpace($OpenHarmonySdk)) {
 }
 
 $SourceDir = (Resolve-Path $SourceDir).Path
-$ProtocPath = (Resolve-Path $ProtocPath).Path
 $BuildDir = [System.IO.Path]::GetFullPath($BuildDir)
-
-if ([string]::IsNullOrWhiteSpace($HostMake)) {
-    $HostMakeCommand = Get-Command make, gmake -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -eq $HostMakeCommand) {
-        throw "Zvec 0.6.0 requires GNU Make for Snowball code generation; pass -HostMake"
-    }
-    $HostMake = $HostMakeCommand.Source
-}
 
 if ([string]::IsNullOrWhiteSpace($HostCCompiler)) {
     $HostCCompilerCommand = Get-Command cc, gcc, clang -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $HostCCompilerCommand) {
-        throw "Zvec 0.6.0 requires a host C compiler for Snowball code generation; pass -HostCCompiler"
+        throw "Zvec 0.7.0 requires a host C compiler for Snowball code generation; pass -HostCCompiler"
     }
     $HostCCompiler = $HostCCompilerCommand.Source
 }
 
-$HostMake = (Resolve-Path $HostMake).Path
 $HostCCompiler = (Resolve-Path $HostCCompiler).Path
-$GitCommand = Get-Command git -ErrorAction Stop
-$GitBin = Split-Path $GitCommand.Source -Parent
-$GitUsrBin = @(
-    (Join-Path (Split-Path $GitBin -Parent) "usr\bin"),
-    (Join-Path (Split-Path (Split-Path $GitBin -Parent) -Parent) "usr\bin")
-) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-$HostPathEntries = @((Split-Path $HostMake -Parent), (Split-Path $HostCCompiler -Parent))
-if (-not [string]::IsNullOrWhiteSpace($GitUsrBin)) {
-    $HostPathEntries += $GitUsrBin
-}
-$env:PATH = "$($HostPathEntries -join ';');$env:PATH"
-
-foreach ($HostTool in @("perl", "sed")) {
-    if ($null -eq (Get-Command $HostTool -ErrorAction SilentlyContinue)) {
-        throw "Zvec 0.6.0 requires $HostTool for Snowball code generation"
-    }
-}
+$env:PATH = "$(Split-Path $HostCCompiler -Parent);$env:PATH"
 
 $Toolchain = Join-Path $OpenHarmonySdk "native\build\cmake\ohos.toolchain.cmake"
 $Cmake = Join-Path $OpenHarmonySdk "native\build-tools\cmake\bin\cmake.exe"
 $Ninja = Join-Path $OpenHarmonySdk "native\build-tools\cmake\bin\ninja.exe"
-$Patch = Join-Path $PSScriptRoot "patches\zvec-0.6.0-ohos.patch"
+$Patch = Join-Path $PSScriptRoot "patches\zvec-0.7.0-ohos.patch"
 
 foreach ($Path in @($Toolchain, $Cmake, $Ninja, $Patch)) {
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -124,7 +94,6 @@ $ConfigureArgs = @(
     "-DBUILD_TESTING=OFF",
     "-DBUILD_TOOLS=OFF",
     "-DENABLE_ARMV8A=ON",
-    "-DGLOBAL_CC_PROTOBUF_PROTOC=$ProtocPath",
     "-DSNOWBALL_HOST_CC=$HostCCompiler",
     "-DUSE_OSS_MIRROR=ON"
 )
