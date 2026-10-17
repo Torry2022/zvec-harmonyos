@@ -1,5 +1,7 @@
 # zvec-harmonyos
 
+[简体中文](README.md) | [English](README_EN.md)
+
 Zvec `v0.7.0` 的非官方 HarmonyOS 交叉编译方案，提供固定上游版本的补丁、Windows PowerShell 构建脚本和最小 C API 生命周期 smoke 测试。
 
 > 本仓库不是 Alibaba Zvec 或 HarmonyOS 的官方项目。0.7.0 已完成鸿蒙交叉编译和真机生命周期测试，仍应视为实验性移植；此前发布的 0.6.0 保留作为回退版本。
