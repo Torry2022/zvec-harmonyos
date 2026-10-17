@@ -8,7 +8,7 @@ Zvec `v0.7.0` 的非官方 HarmonyOS 交叉编译方案，提供固定上游版�
 
 ## 获取预编译库
 
-不需要修改 Zvec 或验证交叉编译过程时，可从 [GitHub Release](https://github.com/Torry2022/zvec-harmonyos/releases/tag/v0.7.0-ohos.1) 下载 `zvec-0.7.0-harmonyos-arm64-v8a.zip`。此前的 [0.6.0 Release](https://github.com/Torry2022/zvec-harmonyos/releases/tag/v0.6.0-ohos.1) 保留供回退。压缩包包含：
+不需要修改 Zvec 或验证交叉编译过程时，可从 [GitHub Release](https://github.com/Torry2022/zvec-harmonyos/releases/tag/v0.7.0-ohos.2) 下载 `zvec-0.7.0-harmonyos-arm64-v8a.zip`。此前的 [ohos.1](https://github.com/Torry2022/zvec-harmonyos/releases/tag/v0.7.0-ohos.1) 和 [0.6.0 Release](https://github.com/Torry2022/zvec-harmonyos/releases/tag/v0.6.0-ohos.1) 保留供回退。压缩包包含：
 
 - HarmonyOS `arm64-v8a` 的 `libzvec_c_api.so`。
 - 对应版本的 `zvec/c_api.h`。
@@ -33,7 +33,7 @@ Get-FileHash .\zvec-0.7.0-harmonyos-arm64-v8a.zip -Algorithm SHA256
 | 工具链 | DevEco Studio OpenHarmony SDK CMake toolchain |
 | 宿主 C 编译器 | Windows GCC / Clang，用于 Snowball 代码生成 |
 | 0.7.0 验证状态 | 干净构建、重复构建和三轮真机生命周期测试通过 |
-| 真机 | HBN-AL80，HarmonyOS 6.1.1.120 |
+| 真机 | HBN-AL80（ohos.1）；Mate 90 Pro Max / CMM-AL10（ohos.2） |
 | 输出 | `libzvec_c_api.so` |
 
 补丁和构建脚本主要处理以下差异：
@@ -43,6 +43,8 @@ Get-FileHash .\zvec-0.7.0-harmonyos-arm64-v8a.zip -Algorithm SHA256
 3. 禁用 HarmonyOS 不支持的 Linux 线程亲和性代码。
 4. 补充 RocksDB 的 OHOS POSIX 头文件处理及 ANTLR 的 OHOS Clang 分支。
 5. 使用 Windows 宿主编译器生成 Snowball 词干处理代码，再由 HarmonyOS 工具链编译目标代码。
+
+源码构建还会应用 `patches/zvec-0.7.0-fts-readonly.patch`，参考上游尚未合并的 [PR #770](https://github.com/alibaba/zvec/pull/770)，只调整只读全文索引的 memtable 工厂，避免为每个列族预分配百万个哈希桶。可写 memtable 配置、索引格式和公开 C API 保持不变。`v0.7.0-ohos.2` 预编译包已包含该修正，验证结果见 [只读全文索引内存对照](smoke/FTS_READONLY_VALIDATION.md)。
 
 ## 前置条件
 
@@ -130,7 +132,7 @@ target_link_libraries(entry PUBLIC zvec)
 
 0.7.0 构建产物动态依赖 `libc++_shared.so` 和 `libc.so`，不再动态依赖 0.6.0 中的 `libz.so`。DevEco Studio 通常会为使用 `c++_shared` 的 Native 模块自动打包 `libc++_shared.so`；集成后仍应检查生成的 HAP 或构建中间产物，确认它与 `libzvec_c_api.so` 一同存在。不要从其他 NDK 或不同 SDK 版本复制 C++ 运行库。
 
-本次 Release 配置的 `.so` 大小为 29,266,848 字节（约 27.9 MiB），相较保留的 0.6.0 构建产物 52,343,728 字节缩小约 44.1%。这是本次工具链和配置下的产物对比，不代表所有平台或配置的固定结果。
+本次 Release 配置的 `.so` 大小为 29,269,792 字节（约 27.9 MiB），相较保留的 0.6.0 构建产物 52,343,728 字节缩小约 44.1%。这是本次工具链和配置下的产物对比，不代表所有平台或配置的固定结果。
 
 ## Smoke 测试
 
@@ -154,19 +156,19 @@ create -> insert -> query -> close -> reopen -> query -> destroy
 PASS zvec lifecycle and retrieval smoke test
 ```
 
-0.7.0 已通过全新源码目录和空构建目录的交叉编译，重复执行构建脚本也通过。在 HBN-AL80 真机上通过签名测试 HAP 运行上述三轮测试，库自身报告 `Runtime v0.7.0`，结果为 PASS。测试使用独立临时 collection 目录，不涉及已有业务数据。不要在正式应用启动时自动执行 smoke 测试。
+`v0.7.0-ohos.1` 已通过全新源码目录和空构建目录的交叉编译，重复执行构建脚本也通过。在 HBN-AL80 真机上通过签名测试 HAP 运行上述三轮测试，库自身报告 `Runtime v0.7.0`，结果为 PASS。测试使用独立临时 collection 目录，不涉及已有业务数据。不要在正式应用启动时自动执行 smoke 测试。
 
 ### 全文检索补测
 
-同一 0.7.0 Release 库已在 Mate 90 Pro Max（CMM-AL10）完成独立签名测试 HAP 的全文检索补测：英文 `standard` 与中文二元 `ngram` 分词、匹配集合、有限分数、布尔 AND、空结果，以及跨进程重开、删除和更新后的持久化均通过。测试共执行 30 次查询断言，不代表完整检索质量或性能评测。
+`v0.7.0-ohos.1` 库已在 Mate 90 Pro Max（CMM-AL10）完成独立签名测试 HAP 的全文检索补测：英文 `standard` 与中文二元 `ngram` 分词、匹配集合、有限分数、布尔 AND、空结果，以及跨进程重开、删除和更新后的持久化均通过。测试共执行 30 次查询断言，不代表完整检索质量或性能评测。
 
-测试源码、构建方式及边界见 [全文检索验证](smoke/FTS_VALIDATION.md)。不需要重新编译或更换已经发布的库。
+测试源码、构建方式及边界见 [全文检索验证](smoke/FTS_VALIDATION.md)。`v0.7.0-ohos.2` 的最终预编译库也已在同一设备重新通过这组全文测试和三轮生命周期测试，并核对两种索引状态下 500 条真实语料查询的完整 Top100 排名、分数和正文。只读内存对照及验证范围见 [只读全文索引验证](smoke/FTS_READONLY_VALIDATION.md)。
 
 ## 已知限制
 
 - 当前脚本固定 Zvec `v0.7.0`，不保证补丁可直接用于其他版本。旧版构建流程可从 `v0.6.0-ohos.1` 标签获取；0.4.0 与 0.6.0 补丁仍保留。
 - 上游 0.7.0 的 C++ 公共接口改为 snake_case；本仓库使用 C API，仍需使用同版本头文件和库重新构建集成方。
-- 原生命周期 smoke 与新增全文 smoke 的覆盖范围不同；全文补测仍不覆盖 Jieba 词典分词、混合检索、量化索引性能或 0.6.0 数据目录迁移，不据此宣称这些能力已验证。
+- 原生命周期 smoke 与新增全文 smoke 的覆盖范围不同；全文补测仍不覆盖库内 Jieba 词典分词、混合检索、量化索引性能或 0.6.0 数据目录迁移，不据此宣称这些能力已验证。
 - 上游在本次 `OHOS/aarch64` 配置中禁用了 RaBitQ 与 DiskANN，不能把上游 Release 中这两类功能的改进描述为本鸿蒙产物已支持。
 - 当前脚本面向 Windows PowerShell 与 DevEco Studio OpenHarmony SDK。
 - 仓库不包含 Zvec 上游源码、模型权重、构建目录或预编译 `.so`。

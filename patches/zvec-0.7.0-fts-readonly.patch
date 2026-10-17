@@ -1,0 +1,67 @@
+diff --git a/src/db/common/rocksdb_context.cc b/src/db/common/rocksdb_context.cc
+--- a/src/db/common/rocksdb_context.cc
++++ b/src/db/common/rocksdb_context.cc
+@@ -49,7 +49,7 @@
+   }
+ 
+   create_opts_.create_if_missing = true;
+-  prepare_options(std::move(args.merge_op));
++  prepare_options(std::move(args.merge_op), false);
+ 
+   rocksdb::DB *db;
+   rocksdb::Status s = rocksdb::DB::Open(create_opts_, args.db_path, &db);
+@@ -125,7 +125,7 @@
+   }
+ 
+   create_opts_.create_if_missing = false;
+-  prepare_options(std::move(args.merge_op));
++  prepare_options(std::move(args.merge_op), read_only);
+ 
+   rocksdb::Status s;
+   std::vector<std::string> existing_cf_names{};
+@@ -239,7 +239,7 @@
+ 
+ 
+ void RocksdbContext::prepare_options(
+-    std::shared_ptr<rocksdb::MergeOperator> merge_op) {
++    std::shared_ptr<rocksdb::MergeOperator> merge_op, bool read_only) {
+   // Increase parallelism with default thread count (typically 16)
+   create_opts_.IncreaseParallelism();
+ 
+@@ -295,12 +295,17 @@
+   // Hash skip list memtable for prefix-based lookups
+   if (enable_hash_skiplist_) {
+     create_opts_.prefix_extractor.reset(rocksdb::NewCappedPrefixTransform(8));
+-    create_opts_.memtable_factory.reset(rocksdb::NewHashSkipListRepFactory(
+-        1000000,  // bucket_count
+-        4,        // skiplist_height
+-        4         // skiplist_branching_factor
+-        ));
+-    create_opts_.allow_concurrent_memtable_write = false;
++    if (read_only) {
++      // Read-only recovery still creates memtables; avoid empty hash buckets.
++      create_opts_.memtable_factory.reset(new rocksdb::SkipListFactory());
++    } else {
++      create_opts_.memtable_factory.reset(rocksdb::NewHashSkipListRepFactory(
++          1000000,  // bucket_count
++          4,        // skiplist_height
++          4         // skiplist_branching_factor
++          ));
++      create_opts_.allow_concurrent_memtable_write = false;
++    }
+     read_opts_.total_order_seek = true;
+   }
+ }
+diff --git a/src/db/common/rocksdb_context.h b/src/db/common/rocksdb_context.h
+--- a/src/db/common/rocksdb_context.h
++++ b/src/db/common/rocksdb_context.h
+@@ -139,7 +139,8 @@
+   Status validate_and_set_db_path(const std::string &db_path,
+                                   bool should_exist);
+ 
+-  void prepare_options(std::shared_ptr<rocksdb::MergeOperator> merge_op);
++  void prepare_options(std::shared_ptr<rocksdb::MergeOperator> merge_op,
++                       bool read_only);
+ 
+   Status flush_unlocked();
+ 

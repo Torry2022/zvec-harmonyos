@@ -34,8 +34,9 @@ $Toolchain = Join-Path $OpenHarmonySdk "native\build\cmake\ohos.toolchain.cmake"
 $Cmake = Join-Path $OpenHarmonySdk "native\build-tools\cmake\bin\cmake.exe"
 $Ninja = Join-Path $OpenHarmonySdk "native\build-tools\cmake\bin\ninja.exe"
 $Patch = Join-Path $PSScriptRoot "patches\zvec-0.7.0-ohos.patch"
+$ReadOnlyPatch = Join-Path $PSScriptRoot "patches\zvec-0.7.0-fts-readonly.patch"
 
-foreach ($Path in @($Toolchain, $Cmake, $Ninja, $Patch)) {
+foreach ($Path in @($Toolchain, $Cmake, $Ninja, $Patch, $ReadOnlyPatch)) {
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Required file not found: $Path"
     }
@@ -65,15 +66,17 @@ function Invoke-GitApply {
     return $ExitCode
 }
 
-$ReverseCheckExitCode = Invoke-GitApply -Arguments @("--reverse", "--check", $Patch) -SuppressError
-if ($ReverseCheckExitCode -ne 0) {
-    $CheckExitCode = Invoke-GitApply -Arguments @("--check", $Patch)
-    if ($CheckExitCode -ne 0) {
-        throw "The HarmonyOS patch cannot be applied cleanly"
-    }
-    $ApplyExitCode = Invoke-GitApply -Arguments @($Patch)
-    if ($ApplyExitCode -ne 0) {
-        throw "Applying the HarmonyOS patch failed"
+foreach ($SourcePatch in @($Patch, $ReadOnlyPatch)) {
+    $ReverseCheckExitCode = Invoke-GitApply -Arguments @("--reverse", "--check", $SourcePatch) -SuppressError
+    if ($ReverseCheckExitCode -ne 0) {
+        $CheckExitCode = Invoke-GitApply -Arguments @("--check", $SourcePatch)
+        if ($CheckExitCode -ne 0) {
+            throw "Patch cannot be applied cleanly: $SourcePatch"
+        }
+        $ApplyExitCode = Invoke-GitApply -Arguments @($SourcePatch)
+        if ($ApplyExitCode -ne 0) {
+            throw "Applying patch failed: $SourcePatch"
+        }
     }
 }
 
